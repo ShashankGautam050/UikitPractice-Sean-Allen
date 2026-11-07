@@ -14,6 +14,8 @@ class FollowersListVC: UIViewController {
         case main
     }
     var userName : String!
+    var page = 1
+    var hasMoreFollowers = true
     var followers = [Follower]()
     var uiCollectionView : UICollectionView!
     var dataSource: UICollectionViewDiffableDataSource<Section, Follower>!
@@ -21,8 +23,8 @@ class FollowersListVC: UIViewController {
         super.viewDidLoad()
         configureViewController()
         configureCollectionView()
-        getFollowers()
         configureDataSource()
+        getFollowers(for: userName, for: page)
     }
     
     func configureViewController(){
@@ -37,23 +39,28 @@ class FollowersListVC: UIViewController {
     
     func configureCollectionView(){
         uiCollectionView = UICollectionView(frame: view.bounds, collectionViewLayout: UIHelper.createThreeColumnFlowLayout(in: view))
+        uiCollectionView.delegate = self
         view.addSubview(uiCollectionView)
         uiCollectionView.backgroundColor = .systemBrown
         uiCollectionView.register(FollowerCell.self, forCellWithReuseIdentifier: FollowerCell.reuseID)
     }
 
-    func getFollowers(){
-        
-        NetworkManager.shared.getFollowers(for: userName ?? "", page: 1) { [weak self] result in
-            guard let self = self else { return } 
+    func getFollowers(for userName : String,for page : Int){
+        showLoadingView()
+        NetworkManager.shared.getFollowers(for: userName, page: page) { [weak self] result in
+            guard let self = self else { return }
+            print("Network result received: \(result)")
+            self.dismissLoadingView()
             switch result {
             case .success(let followers):
-                self.followers = followers
+                if followers.count < 100 { self.hasMoreFollowers = false}
+                self.followers.append(contentsOf: followers)
                 self.updateData()
                 print("Followers count-> \(followers.count)")
                 print(followers)
                 
             case .failure(let error):
+                print("Error fetching: \(error.rawValue)")
                 self.presentAlertViewOnMainThread(titleLabel: "Bad Stuff Happened", message: error.rawValue, buttonTitle: "Okay")
             }
         }
@@ -78,8 +85,17 @@ class FollowersListVC: UIViewController {
         }
         
     }
-    
+}
 
-  
-
+extension FollowersListVC : UICollectionViewDelegate{
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        let offset = scrollView.contentOffset.y
+        let contentHeight = scrollView.contentSize.height
+        let height = scrollView.frame.size.height
+        if offset > contentHeight - height {
+            guard hasMoreFollowers else { return }
+            page += 1
+            getFollowers(for: userName, for: page)
+        }
+    }
 }
